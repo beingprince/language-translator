@@ -1,6 +1,10 @@
 import speech_recognition as sr
-from googletrans import Translator
+from googletrans import Translator, constants
 import pyttsx3
+from gtts import gTTS
+from playsound import playsound
+import tempfile
+import os
 
 def recognize_speech(recognizer, microphone):
     with microphone as source:
@@ -24,7 +28,37 @@ def translate_text(text, target_language='en'):
     translation = translator.translate(text, dest=target_language)
     return translation.text
 
-def speak_text(text, language='en'):
+def resolve_language_code(name, default="en"):
+    """Return a language code given a language name or code."""
+    name = name.lower()
+    if name in constants.LANGCODES:
+        return constants.LANGCODES[name]
+    for code, lang in constants.LANGUAGES.items():
+        if lang.lower() == name or code.lower() == name:
+            return code
+    return default
+
+def speak_text(text, language='en', use_gtts=True):
+    """Speak the given text.
+
+    If ``use_gtts`` is True, use gTTS for more natural-sounding speech.
+    Falls back to ``pyttsx3`` when gTTS fails or when ``use_gtts`` is False.
+    """
+    if use_gtts:
+        temp_path = None
+        try:
+            tts = gTTS(text=text, lang=language)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as fp:
+                temp_path = fp.name
+                tts.save(temp_path)
+            playsound(temp_path)
+            return
+        except Exception as exc:
+            print(f"gTTS failed ({exc}); falling back to pyttsx3")
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
     engine = pyttsx3.init()
     engine.setProperty('rate', 150)  # Speed of speech
     engine.setProperty('volume', 0.9)  # Volume level (0.0 to 1.0)
@@ -45,9 +79,10 @@ if __name__ == "__main__":
     # Ask the user to choose languages for speaking and translation
     language1 = 'en'  # Source language is always English
     language2 = input("Please choose the translation language (e.g., 'Nepali' or 'Hindi'): ").strip().lower()
+    language2_code = resolve_language_code(language2)
 
     print(f"You will be speaking in English and translations will be in {language2}.")
-    speak_text(f"You will be speaking in English and translations will be in {language2}.")
+    speak_text(f"You will be speaking in English and translations will be in {language2}.", language=language2_code)
 
     while True:
         command = recognize_speech(recognizer, microphone)
@@ -59,6 +94,6 @@ if __name__ == "__main__":
             
             print("Translating...")
             translated_text = translate_text(command, target_language='en')  # Translate to English first
-            translated_text = translate_text(translated_text, target_language=language2)  # Then translate to target language
+            translated_text = translate_text(translated_text, target_language=language2_code)  # Then translate to target language
             print(f"Translated text ({language2}):", translated_text)
-            speak_text(f"The translation in {language2} is: {translated_text}")
+            speak_text(f"The translation in {language2} is: {translated_text}", language=language2_code)
